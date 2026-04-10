@@ -1,39 +1,23 @@
-import React, { useContext, useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
-import { AlertContext } from '../context/AlertContext';
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 
 const SettingsScreen = ({ navigation }) => {
-  const { threshold, updateThreshold } = useContext(AlertContext);
-  const [val, setVal] = useState(threshold.toString());
-
-  const handleSave = () => {
-    const num = parseFloat(val);
-    if (!isNaN(num)) {
-      updateThreshold(num);
-      navigation.goBack();
-    }
-  };
-
   return (
     <View style={styles.container}>
       <Text style={styles.title}>SYSTEM CONFIG</Text>
       
       <View style={styles.card}>
-        <Text style={styles.label}>SENSITIVITY THRESHOLD (g)</Text>
-        <TextInput
-          style={styles.input}
-          keyboardType="numeric"
-          value={val}
-          onChangeText={setVal}
-          placeholderTextColor="#444"
-        />
+        <Text style={styles.label}>SENSITIVITY CALIBRATION</Text>
         <Text style={styles.desc}>
-          Set the target deviation from baseline vibration. A higher number reduces false alarms but may delay earthquake detection.
+          Since you are using the SW-420 Digital Vibration Sensor, software-level sensitivity thresholding is disabled. 
+        </Text>
+        <Text style={styles.descHardware}>
+          Please use a screwdriver to manually adjust the blue physical potentiometer dial directly on the SW-420 sensor circuit board to calibrate the vibration threshold. Turn clockwise to increase sensitivity.
         </Text>
       </View>
 
-      <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-        <Text style={styles.saveTxt}>SAVE SETTINGS</Text>
+      <TouchableOpacity style={styles.saveBtn} onPress={() => navigation.goBack()}>
+        <Text style={styles.saveTxt}>RETURN TO DASHBOARD</Text>
       </TouchableOpacity>
     </View>
   );
@@ -82,6 +66,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 15,
     lineHeight: 18,
+  },
+  descHardware: {
+    color: '#00ffa4',
+    fontSize: 13,
+    marginTop: 15,
+    lineHeight: 20,
+    fontWeight: 'bold',
   },
   saveBtn: {
     backgroundColor: 'transparent',

@@ -1,55 +1,53 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, Vibration } from 'react-native';
-import { Audio } from 'expo-av';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, Vibration, LogBox } from 'react-native';
+import { useAudioPlayer } from 'expo-audio';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+// Ignore Expo Go specific warnings about notifications
+LogBox.ignoreLogs([
+  '`expo-notifications` functionality is not fully supported',
+  'Android Push notifications (remote notifications)'
+]);
+
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+} catch (e) {
+  // Gracefully skip if Expo Go strictly blocks it
+}
 
 export const AlertContext = createContext();
 
 export const AlertProvider = ({ children }) => {
   const [alertTriggered, setAlertTriggered] = useState(false);
-  const [threshold, setThreshold] = useState(1.5); // Default 1.5g
-  const [sound, setSound] = useState();
 
-  useEffect(() => {
-    loadThreshold();
-  }, []);
+  // Setup expo-audio
+  let alarmPlayer = null;
+  try {
+    alarmPlayer = useAudioPlayer(require('../../assets/alarm.mp3'));
+  } catch (e) {
+    // If require fails because asset doesn't exist yet, it's caught
+  }
 
-  const loadThreshold = async () => {
-    try {
-      const saved = await AsyncStorage.getItem('@seismic_threshold');
-      if (saved) setThreshold(parseFloat(saved));
-    } catch (e) {
-      console.log('Error loading threshold', e);
-    }
-  };
-
-  const updateThreshold = async (val) => {
-    setThreshold(val);
-    await AsyncStorage.setItem('@seismic_threshold', val.toString());
-  };
-
-  const triggerAlert = async (vibrationValue) => {
+  const triggerAlert = async () => {
     if (alertTriggered) return; // Prevent multiple tiggers
 
     setAlertTriggered(true);
 
     // Play Local Alarm
     try {
-      // You can use a local alarm file placed in assets or a standard sound block
-      const { sound } = await Audio.Sound.createAsync(
-        require('../../assets/alarm.mp3'), // Replace with actual asset if available or use beep
-        { shouldPlay: true, isLooping: true }
-      );
-      setSound(sound);
+      if (alarmPlayer) {
+        alarmPlayer.loop = true;
+        alarmPlayer.play();
+      } else {
+        throw new Error('Audio asset is null');
+      }
     } catch (error) {
       console.warn('Warning: Audio asset not found or failed to load. Falling back to vibration.', error.message);
       // Fallback trigger for missing audio asset
@@ -61,7 +59,7 @@ export const AlertProvider = ({ children }) => {
       await Notifications.scheduleNotificationAsync({
         content: {
           title: "EARTHQUAKE ALERT!",
-          body: `Seismic activity exceeded safe threshold. Detected: ${vibrationValue.toFixed(2)}g`,
+          body: `Significant vibration detected by the SW-420 sensor!`,
           data: { data: 'goes here' },
         },
         trigger: null,
@@ -74,20 +72,18 @@ export const AlertProvider = ({ children }) => {
   const dismissAlert = async () => {
     setAlertTriggered(false);
     Vibration.cancel(); // Stop fallback vibrations
-    if (sound) {
-      await sound.stopAsync();
-      await sound.unloadAsync();
-      setSound(null);
+    if (alarmPlayer) {
+      alarmPlayer.pause();
     }
   };
 
   return (
-    <AlertContext.Provider value={{ threshold, updateThreshold, triggerAlert, alertTriggered, dismissAlert }}>
+    <AlertContext.Provider value={{ triggerAlert, alertTriggered, dismissAlert }}>
       {children}
       <Modal visible={alertTriggered} transparent={true} animationType="fade">
         <View style={styles.alertOverlay}>
           <Text style={styles.alertTitle}>CRITICAL ALERT</Text>
-          <Text style={styles.alertSubtitle}>SEISMIC THRESHOLD BREACHED</Text>
+          <Text style={styles.alertSubtitle}>VIBRATION DETECTED</Text>
           <TouchableOpacity style={styles.dismissButton} onPress={dismissAlert}>
             <Text style={styles.dismissText}>DISMISS ALARM</Text>
           </TouchableOpacity>

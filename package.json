@@ -13,7 +13,7 @@
     "@react-navigation/native": "^6.x",
     "@react-navigation/native-stack": "^6.x",
     "expo": "~54.0.33",
-    "expo-av": "~16.0.8",
+    "expo-audio": "~1.1.1",
     "expo-notifications": "~0.32.16",
     "expo-status-bar": "~3.0.9",
     "firebase": "^12.12.0",
