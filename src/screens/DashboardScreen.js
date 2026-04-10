@@ -17,14 +17,15 @@ const DashboardScreen = ({ navigation }) => {
     const seismicRef = ref(db, '/seismic_data');
     const unsubscribe = onValue(seismicRef, (snapshot) => {
       const data = snapshot.val();
-      if (data !== null && data !== undefined) {
-        if (loading) setLoading(false);
-        
-        // Ensure strictly 0 or 1
-        const currentVibrationState = (data === 1 || data.isVibrating === 1) ? 1 : 0;
-        setIsVibrating(currentVibrationState);
-        
-        // Throttle chart updates to once every 300ms to save CPU
+      
+      // Stop the loading spinner even if the database is currently empty (null)
+      if (loading) setLoading(false);
+      
+      // Ensure strictly 0 or 1, and handle null values safely
+      const currentVibrationState = (data === 1 || (data && data.isVibrating === 1)) ? 1 : 0;
+      setIsVibrating(currentVibrationState);
+      
+      // Throttle chart updates to once every 300ms to save CPU
         const now = Date.now();
         if (now - lastChartUpdate.current >= 300) {
           lastChartUpdate.current = now;
@@ -38,7 +39,6 @@ const DashboardScreen = ({ navigation }) => {
         if (currentVibrationState === 1 && !alertTriggered) {
           triggerAlert();
         }
-      }
     });
 
     return () => unsubscribe();
