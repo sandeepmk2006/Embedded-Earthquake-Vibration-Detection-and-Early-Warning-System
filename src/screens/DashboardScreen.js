@@ -21,8 +21,9 @@ const DashboardScreen = ({ navigation }) => {
       // Stop the loading spinner even if the database is currently empty (null)
       if (loading) setLoading(false);
       
-      // Ensure strictly 0 or 1, and handle null values safely
-      const currentVibrationState = (data === 1 || (data && data.isVibrating === 1)) ? 1 : 0;
+      // Ensure strictly 0 or 1, and handle null values safely. 
+      // User expects payload to be `data.vibration` but we'll accept raw `data` or `data === 1` just in case.
+      const currentVibrationState = (data === 1 || (data && data.vibration === 1)) ? 1 : 0;
       setIsVibrating(currentVibrationState);
       
       // Throttle chart updates to once every 300ms to save CPU
