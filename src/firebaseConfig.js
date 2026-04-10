@@ -2,14 +2,14 @@ import { initializeApp } from 'firebase/app';
 import { getDatabase } from 'firebase/database';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBcqPzu2Yidk6eAblwnlf_JSlhUwMqrtMc",
-  authDomain: "earth-quack-67676.firebaseapp.com",
-  databaseURL: "https://earth-quack-67676-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "earth-quack-67676",
-  storageBucket: "earth-quack-67676.firebasestorage.app",
-  messagingSenderId: "895598284495",
-  appId: "1:895598284495:web:855e9dec51afd78103b1ba",
-  measurementId: "G-0EBL2P2MBM"
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  databaseURL: process.env.EXPO_PUBLIC_FIREBASE_DATABASE_URL,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
 const app = initializeApp(firebaseConfig);
