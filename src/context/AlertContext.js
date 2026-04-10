@@ -55,14 +55,18 @@ export const AlertProvider = ({ children }) => {
     }
 
     // Send Push Notification
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: "EARTHQUAKE ALERT!",
-        body: `Seismic activity exceeded safe threshold. Detected: ${vibrationValue.toFixed(2)}g`,
-        data: { data: 'goes here' },
-      },
-      trigger: null,
-    });
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "EARTHQUAKE ALERT!",
+          body: `Seismic activity exceeded safe threshold. Detected: ${vibrationValue.toFixed(2)}g`,
+          data: { data: 'goes here' },
+        },
+        trigger: null,
+      });
+    } catch (e) {
+      console.log('Skipping push notification (requires dev build on modern Android):', e);
+    }
   };
 
   const dismissAlert = async () => {

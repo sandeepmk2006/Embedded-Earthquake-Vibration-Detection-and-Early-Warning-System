@@ -1,20 +1,50 @@
+import React, { useEffect } from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+
+import { AlertProvider } from './src/context/AlertContext';
+import DashboardScreen from './src/screens/DashboardScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
+
+const Stack = createNativeStackNavigator();
 
 export default function App() {
+  useEffect(() => {
+    // Request permission for push notifications
+    const getPermissions = async () => {
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== 'granted') {
+          console.log('Push notifications disabled');
+        }
+      } catch (err) {
+        console.log('Push notifications not fully supported in Expo Go sandbox', err);
+      }
+    };
+    getPermissions();
+  }, []);
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.js to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <AlertProvider>
+      <NavigationContainer>
+        <StatusBar style="light" backgroundColor="#000" />
+        <Stack.Navigator 
+          initialRouteName="Dashboard" 
+          screenOptions={{ 
+            headerShown: false,
+            contentStyle: { backgroundColor: '#050505' }
+          }}
+        >
+          <Stack.Screen name="Dashboard" component={DashboardScreen} />
+          <Stack.Screen 
+            name="Settings" 
+            component={SettingsScreen} 
+            options={{ presentation: 'modal' }}
+          />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </AlertProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
