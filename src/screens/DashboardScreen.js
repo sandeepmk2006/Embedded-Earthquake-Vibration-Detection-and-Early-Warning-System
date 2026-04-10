@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useContext } from 'react';
-import { View, Text, StyleSheet, Dimensions, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useContext, useRef } from 'react';
+import { View, Text, StyleSheet, Dimensions, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { db } from '../firebaseConfig';
 import { ref, onValue } from 'firebase/database';
 import { LineChart } from 'react-native-chart-kit';
@@ -8,6 +8,8 @@ import { AlertContext } from '../context/AlertContext';
 const DashboardScreen = ({ navigation }) => {
   const [dataPts, setDataPts] = useState(Array(15).fill(0)); 
   const [xyz, setXyz] = useState({ x: 0, y: 0, z: 0 });
+  const [loading, setLoading] = useState(true);
+  const lastChartUpdate = useRef(0);
   const { threshold, triggerAlert, alertTriggered } = useContext(AlertContext);
 
   useEffect(() => {
@@ -16,20 +18,28 @@ const DashboardScreen = ({ navigation }) => {
     const unsubscribe = onValue(seismicRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
+        if (loading) setLoading(false);
         setXyz({ x: data.x, y: data.y, z: data.z });
         
         // Calculate raw magnitude g-force (assume baseline normal is 1g or 0g depending on sensor calibration)
         // Here we take root-mean-square magnitude minus 1g gravity if baseline is 1g, 
         // Or simply raw max component if raw
         const magnitude = Math.sqrt(data.x*data.x + data.y*data.y + data.z*data.z); 
-        const delta = Math.abs(magnitude - 1.0); // assuming resting is 1g 
+        const rawDelta = Math.abs(magnitude - 1.0); // assuming resting is 1g 
+        const delta = parseFloat(rawDelta.toFixed(3));
         
-        // Push new data for chart
-        setDataPts(prev => {
-          const newData = [...prev.slice(1), delta];
-          return newData;
-        });
+        // Throttle chart updates to once every 300ms to save CPU
+        const now = Date.now();
+        if (now - lastChartUpdate.current >= 300) {
+          lastChartUpdate.current = now;
+          // Push new data for chart
+          setDataPts(prev => {
+            const newData = [...prev.slice(1), delta];
+            return newData;
+          });
+        }
 
+        // Instant background threshold check regardless of chart throttle
         if (delta >= threshold && !alertTriggered) {
           triggerAlert(delta);
         }
@@ -37,9 +47,18 @@ const DashboardScreen = ({ navigation }) => {
     });
 
     return () => unsubscribe();
-  }, [threshold, alertTriggered]);
+  }, [threshold, alertTriggered, loading]);
 
   const screenWidth = Dimensions.get('window').width - 40;
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centerAlign]}>
+        <ActivityIndicator size="large" color="#00ffa4" />
+        <Text style={styles.loadingText}>Connecting to Sensor...</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container}>
@@ -105,6 +124,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#050505',
     padding: 20,
+  },
+  centerAlign: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: '#00ffa4',
+    marginTop: 20,
+    fontSize: 16,
+    letterSpacing: 2,
   },
   header: {
     flexDirection: 'row',

@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, Vibration } from 'react-native';
 import { Audio } from 'expo-av';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -51,7 +51,9 @@ export const AlertProvider = ({ children }) => {
       );
       setSound(sound);
     } catch (error) {
-      console.log('Error playing sound', error);
+      console.warn('Warning: Audio asset not found or failed to load. Falling back to vibration.', error.message);
+      // Fallback trigger for missing audio asset
+      Vibration.vibrate([500, 500, 500], true); // Repeating pattern
     }
 
     // Send Push Notification
@@ -71,6 +73,7 @@ export const AlertProvider = ({ children }) => {
 
   const dismissAlert = async () => {
     setAlertTriggered(false);
+    Vibration.cancel(); // Stop fallback vibrations
     if (sound) {
       await sound.stopAsync();
       await sound.unloadAsync();
