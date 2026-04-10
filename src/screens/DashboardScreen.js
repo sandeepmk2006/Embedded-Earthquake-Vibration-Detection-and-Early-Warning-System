@@ -7,47 +7,42 @@ import { AlertContext } from '../context/AlertContext';
 
 const DashboardScreen = ({ navigation }) => {
   const [dataPts, setDataPts] = useState(Array(15).fill(0)); 
-  const [xyz, setXyz] = useState({ x: 0, y: 0, z: 0 });
+  const [isVibrating, setIsVibrating] = useState(0);
   const [loading, setLoading] = useState(true);
   const lastChartUpdate = useRef(0);
-  const { threshold, triggerAlert, alertTriggered } = useContext(AlertContext);
+  const { triggerAlert, alertTriggered } = useContext(AlertContext);
 
   useEffect(() => {
     // Listen to seismic_data node on Firebase Realtime DB
     const seismicRef = ref(db, '/seismic_data');
     const unsubscribe = onValue(seismicRef, (snapshot) => {
       const data = snapshot.val();
-      if (data) {
+      if (data !== null && data !== undefined) {
         if (loading) setLoading(false);
-        setXyz({ x: data.x, y: data.y, z: data.z });
         
-        // Calculate raw magnitude g-force (assume baseline normal is 1g or 0g depending on sensor calibration)
-        // Here we take root-mean-square magnitude minus 1g gravity if baseline is 1g, 
-        // Or simply raw max component if raw
-        const magnitude = Math.sqrt(data.x*data.x + data.y*data.y + data.z*data.z); 
-        const rawDelta = Math.abs(magnitude - 1.0); // assuming resting is 1g 
-        const delta = parseFloat(rawDelta.toFixed(3));
+        // Ensure strictly 0 or 1
+        const currentVibrationState = (data === 1 || data.isVibrating === 1) ? 1 : 0;
+        setIsVibrating(currentVibrationState);
         
         // Throttle chart updates to once every 300ms to save CPU
         const now = Date.now();
         if (now - lastChartUpdate.current >= 300) {
           lastChartUpdate.current = now;
-          // Push new data for chart
           setDataPts(prev => {
-            const newData = [...prev.slice(1), delta];
+            const newData = [...prev.slice(1), currentVibrationState];
             return newData;
           });
         }
 
         // Instant background threshold check regardless of chart throttle
-        if (delta >= threshold && !alertTriggered) {
-          triggerAlert(delta);
+        if (currentVibrationState === 1 && !alertTriggered) {
+          triggerAlert();
         }
       }
     });
 
     return () => unsubscribe();
-  }, [threshold, alertTriggered, loading]);
+  }, [alertTriggered, loading]);
 
   const screenWidth = Dimensions.get('window').width - 40;
 
@@ -69,7 +64,7 @@ const DashboardScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.sectionLabel}>REAL-TIME G-FORCE (Δ from 1g)</Text>
+      <Text style={styles.sectionLabel}>REAL-TIME HARDWARE PULSE LOG</Text>
       
       <View style={styles.chartContainer}>
         <LineChart
@@ -84,12 +79,12 @@ const DashboardScreen = ({ navigation }) => {
           withOuterLines={true}
           withVerticalLabels={false}
           withHorizontalLabels={true}
-          yAxisSuffix="g"
+          yAxisSuffix=""
           chartConfig={{
             backgroundColor: '#0a0a0a',
             backgroundGradientFrom: '#111',
             backgroundGradientTo: '#111',
-            decimalPlaces: 2,
+            decimalPlaces: 0,
             color: (opacity = 1) => `rgba(0, 255, 170, ${opacity})`,
             labelColor: (opacity = 1) => `rgba(150, 150, 150, ${opacity})`,
             style: { borderRadius: 10 },
@@ -100,19 +95,13 @@ const DashboardScreen = ({ navigation }) => {
         />
       </View>
 
-      <Text style={styles.sectionLabel}>ADXL345 SENSOR DATA</Text>
+      <Text style={styles.sectionLabel}>SW-420 DIGITAL SENSOR STATUS</Text>
       <View style={styles.cardContainer}>
-        <View style={styles.axisCard}>
-          <Text style={styles.axisLabel}>X-AXIS</Text>
-          <Text style={styles.axisValue}>{xyz.x.toFixed(3)}</Text>
-        </View>
-        <View style={styles.axisCard}>
-          <Text style={styles.axisLabel}>Y-AXIS</Text>
-          <Text style={styles.axisValue}>{xyz.y.toFixed(3)}</Text>
-        </View>
-        <View style={styles.axisCard}>
-          <Text style={styles.axisLabel}>Z-AXIS</Text>
-          <Text style={styles.axisValue}>{xyz.z.toFixed(3)}</Text>
+        <View style={[styles.statusCard, isVibrating === 1 ? styles.statusAlert : styles.statusSafe]}>
+          <Text style={styles.statusLabel}>CURRENT STATE</Text>
+          <Text style={[styles.statusValue, isVibrating === 1 ? styles.textAlert : styles.textSafe]}>
+            {isVibrating === 1 ? 'VIBRATION DETECTED!' : 'STABLE (NO MOVEMENT)'}
+          </Text>
         </View>
       </View>
     </ScrollView>
@@ -176,28 +165,37 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 40,
   },
-  axisCard: {
-    backgroundColor: '#151515',
-    padding: 15,
+  statusCard: {
+    padding: 20,
     borderRadius: 8,
-    width: '30%',
+    width: '100%',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#222',
-    borderLeftWidth: 3,
-    borderLeftColor: '#00ffa4',
+    borderWidth: 2,
   },
-  axisLabel: {
-    color: '#555',
-    fontSize: 10,
+  statusSafe: {
+    backgroundColor: '#0a1a0f',
+    borderColor: '#00ffa4',
+  },
+  statusAlert: {
+    backgroundColor: '#1a0a0a',
+    borderColor: '#ff4444',
+  },
+  statusLabel: {
+    color: '#888',
+    fontSize: 12,
+    letterSpacing: 2,
+    marginBottom: 10,
+  },
+  statusValue: {
+    fontSize: 22,
+    fontWeight: '900',
     letterSpacing: 1,
-    marginBottom: 5,
   },
-  axisValue: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+  textSafe: {
+    color: '#00ffa4',
+  },
+  textAlert: {
+    color: '#ff4444',
   }
 });
 
