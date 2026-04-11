@@ -17,7 +17,7 @@ const DashboardScreen = ({ navigation }) => {
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
 
-  const { triggerAlert, alertTriggered } = useContext(AlertContext);
+  const { triggerAlert, alertTriggered, emergencyActive, triggerEmergencyMode, cancelEmergencyMode } = useContext(AlertContext);
 
   useEffect(() => {
     // Listen to seismic_data node on Firebase Realtime DB
@@ -70,7 +70,11 @@ const DashboardScreen = ({ navigation }) => {
       const data = await response.json();
       console.log("Groq API Response:", JSON.stringify(data));
       if (data.choices && data.choices.length > 0) {
-        setMessages(prev => [...prev, data.choices[0].message]);
+        let aiContent = data.choices[0].message.content;
+        // Strip out markdown formatting like ** or *** to keep chat clean
+        aiContent = aiContent.replace(/\*{1,3}/g, '');
+        
+        setMessages(prev => [...prev, { ...data.choices[0].message, content: aiContent }]);
       } else {
         throw new Error(data.error ? data.error.message : "No choices from Groq");
       }
@@ -112,12 +116,19 @@ const DashboardScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
+      <TouchableOpacity 
+        style={[styles.emergencyBtn, emergencyActive ? styles.emergencyBtnActive : null]} 
+        onPress={emergencyActive ? cancelEmergencyMode : triggerEmergencyMode}
+      >
+        <Text style={styles.emergencyBtnText}>{emergencyActive ? "CANCEL HELP REQUEST" : "NEED HELP"}</Text>
+      </TouchableOpacity>
+
       <Text style={styles.sectionLabel}>SW-420 DIGITAL SENSOR STATUS</Text>
       <View style={styles.cardContainer}>
         <View style={[styles.statusCard, isVibrating === 1 ? styles.statusAlert : styles.statusSafe]}>
           <Text style={styles.statusLabel}>CURRENT STATE</Text>
           <Text style={[styles.statusValue, isVibrating === 1 ? styles.textAlert : styles.textSafe]}>
-            {isVibrating === 1 ? 'VIBRATION DETECTED!' : 'STABLE (NO MOVEMENT)'}
+            {isVibrating === 1 ? 'ALERT' : 'STABLE'}
           </Text>
         </View>
       </View>
@@ -273,6 +284,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontStyle: 'italic',
     marginBottom: 10,
+  },
+  emergencyBtn: {
+    backgroundColor: '#ff3b30',
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  emergencyBtnActive: {
+    backgroundColor: '#880000',
+    borderWidth: 2,
+    borderColor: '#ff0000',
+  },
+  emergencyBtnText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 18,
+    letterSpacing: 1,
   },
   inputRow: {
     flexDirection: 'row',

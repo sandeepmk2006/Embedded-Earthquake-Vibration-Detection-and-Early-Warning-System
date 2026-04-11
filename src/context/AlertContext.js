@@ -1,8 +1,11 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useRef } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, Vibration, LogBox } from 'react-native';
 import { useAudioPlayer } from 'expo-audio';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Location from 'expo-location';
+import { getAuth } from 'firebase/auth';
+import { getDatabase, ref, update } from 'firebase/database';
 
 // Ignore Expo Go specific warnings about notifications
 LogBox.ignoreLogs([
@@ -27,6 +30,8 @@ export const AlertContext = createContext();
 
 export const AlertProvider = ({ children }) => {
   const [alertTriggered, setAlertTriggered] = useState(false);
+  const [emergencyActive, setEmergencyActive] = useState(false);
+  const lastDismissedRef = useRef(0);
 
   // Setup expo-audio
   let alarmPlayer = null;
@@ -36,8 +41,56 @@ export const AlertProvider = ({ children }) => {
     // If require fails because asset doesn't exist yet, it's caught
   }
 
+  const triggerEmergencyMode = async () => {
+    setEmergencyActive(true);
+    try {
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
+
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.warn("Location permission denied");
+        return;
+      }
+
+      let location = await Location.getCurrentPositionAsync({});
+      const db = getDatabase();
+      const userRef = ref(db, `users/${currentUser.uid}`);
+
+      await update(userRef, {
+        needsHelp: true,
+        lastLocation: {
+          lat: location.coords.latitude,
+          lng: location.coords.longitude
+        }
+      });
+      
+    } catch (e) {
+      console.error('Failed to trigger emergency mode in DB:', e);
+    }
+  };
+
+  const cancelEmergencyMode = async () => {
+    setEmergencyActive(false);
+    try {
+      const auth = getAuth();
+      if (!auth.currentUser) return;
+      const db = getDatabase();
+      const userRef = ref(db, `users/${auth.currentUser.uid}`);
+      await update(userRef, { needsHelp: false });
+    } catch (e) {
+      console.error('Failed to cancel emergency mode:', e);
+    }
+  };
+
   const triggerAlert = async () => {
     if (alertTriggered) return; // Prevent multiple tiggers
+
+    // Ensure 20 seconds have passed since the last dismissal
+    if (Date.now() - lastDismissedRef.current < 20000) {
+      return;
+    }
 
     setAlertTriggered(true);
 
@@ -72,6 +125,7 @@ export const AlertProvider = ({ children }) => {
 
   const dismissAlert = async () => {
     setAlertTriggered(false);
+    lastDismissedRef.current = Date.now(); // Record dismiss time
     Vibration.cancel(); // Stop fallback vibrations
     if (alarmPlayer) {
       alarmPlayer.pause();
@@ -79,7 +133,7 @@ export const AlertProvider = ({ children }) => {
   };
 
   return (
-    <AlertContext.Provider value={{ triggerAlert, alertTriggered, dismissAlert }}>
+    <AlertContext.Provider value={{ triggerAlert, alertTriggered, dismissAlert, triggerEmergencyMode, cancelEmergencyMode, emergencyActive }}>
       {children}
       <Modal visible={alertTriggered} transparent={true} animationType="fade">
         <View style={styles.alertOverlay}>
