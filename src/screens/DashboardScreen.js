@@ -68,10 +68,11 @@ const DashboardScreen = ({ navigation }) => {
       });
 
       const data = await response.json();
+      console.log("Groq API Response:", JSON.stringify(data));
       if (data.choices && data.choices.length > 0) {
         setMessages(prev => [...prev, data.choices[0].message]);
       } else {
-        throw new Error("No choices from Groq");
+        throw new Error(data.error ? data.error.message : "No choices from Groq");
       }
     } catch (error) {
       console.warn("Chatbot Error:", error);
