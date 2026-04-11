@@ -1,15 +1,22 @@
-import React, { useEffect, useState, useContext, useRef } from 'react';
-import { View, Text, StyleSheet, Dimensions, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState, useContext } from 'react';
+import { View, Text, StyleSheet, Dimensions, KeyboardAvoidingView, Platform, TouchableOpacity, ActivityIndicator, TextInput, FlatList } from 'react-native';
 import { db } from '../firebaseConfig';
 import { ref, onValue } from 'firebase/database';
-import { LineChart } from 'react-native-chart-kit';
 import { AlertContext } from '../context/AlertContext';
 
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+
 const DashboardScreen = ({ navigation }) => {
-  const [dataPts, setDataPts] = useState(Array(15).fill(0)); 
   const [isVibrating, setIsVibrating] = useState(0);
   const [loading, setLoading] = useState(true);
-  const lastChartUpdate = useRef(0);
+  
+  // Chatbot State
+  const [messages, setMessages] = useState([
+    { role: 'assistant', content: 'Hello. I am the Emergency & Earthquake Safety Assistant. How can I help you prepare or stay safe?' }
+  ]);
+  const [inputText, setInputText] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+
   const { triggerAlert, alertTriggered } = useContext(AlertContext);
 
   useEffect(() => {
@@ -18,34 +25,70 @@ const DashboardScreen = ({ navigation }) => {
     const unsubscribe = onValue(seismicRef, (snapshot) => {
       const data = snapshot.val();
       
-      // Stop the loading spinner even if the database is currently empty (null)
       if (loading) setLoading(false);
       
-      // Ensure strictly 0 or 1, and handle null values safely. 
-      // User expects payload to be `data.vibration` but we'll accept raw `data` or `data === 1` just in case.
       const currentVibrationState = (data === 1 || (data && data.vibration === 1)) ? 1 : 0;
       setIsVibrating(currentVibrationState);
       
-      // Throttle chart updates to once every 300ms to save CPU
-        const now = Date.now();
-        if (now - lastChartUpdate.current >= 300) {
-          lastChartUpdate.current = now;
-          setDataPts(prev => {
-            const newData = [...prev.slice(1), currentVibrationState];
-            return newData;
-          });
-        }
-
-        // Instant background threshold check regardless of chart throttle
-        if (currentVibrationState === 1 && !alertTriggered) {
-          triggerAlert();
-        }
+      if (currentVibrationState === 1 && !alertTriggered) {
+        triggerAlert();
+      }
     });
 
     return () => unsubscribe();
   }, [alertTriggered, loading]);
 
-  const screenWidth = Dimensions.get('window').width - 40;
+  const handleSendMessage = async () => {
+    if (!inputText.trim()) return;
+
+    const userMessage = { role: 'user', content: inputText.trim() };
+    const updatedMessages = [...messages, userMessage];
+    
+    setMessages(updatedMessages);
+    setInputText('');
+    setIsTyping(true);
+
+    try {
+      const response = await fetch(GROQ_API_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.EXPO_PUBLIC_GROQ_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'llama3-8b-8192',
+          messages: [
+            { 
+              role: 'system', 
+              content: 'You are an AI assistant specialized ONLY in emergency situations, earthquake preparedness, and safety. You MUST ONLY answer questions related to emergency situations and earthquake situations. If the user asks about anything else (like math, coding, general info, weather outside emergencies), politely decline to answer and state your purpose. Keep answers brief and actionable.' 
+            },
+            ...updatedMessages.map(m => ({ role: m.role, content: m.content }))
+          ],
+        }),
+      });
+
+      const data = await response.json();
+      if (data.choices && data.choices.length > 0) {
+        setMessages(prev => [...prev, data.choices[0].message]);
+      } else {
+        throw new Error("No choices from Groq");
+      }
+    } catch (error) {
+      console.warn("Chatbot Error:", error);
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Connection error. Unable to reach emergency database.' }]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  const renderMessage = ({ item }) => {
+    const isUser = item.role === 'user';
+    return (
+      <View style={[styles.messageBubble, isUser ? styles.userBubble : styles.botBubble]}>
+        <Text style={styles.messageText}>{item.content}</Text>
+      </View>
+    );
+  };
 
   if (loading) {
     return (
@@ -57,43 +100,15 @@ const DashboardScreen = ({ navigation }) => {
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <KeyboardAvoidingView 
+      style={styles.container} 
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <View style={styles.header}>
         <Text style={styles.title}>SEISMIC MONITOR</Text>
         <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
           <Text style={styles.neonTextBtn}>[ SETTINGS ]</Text>
         </TouchableOpacity>
-      </View>
-
-      <Text style={styles.sectionLabel}>REAL-TIME HARDWARE PULSE LOG</Text>
-      
-      <View style={styles.chartContainer}>
-        <LineChart
-          data={{
-            labels: [], 
-            datasets: [{ data: dataPts }]
-          }}
-          width={screenWidth}
-          height={220}
-          withDots={false}
-          withInnerLines={false}
-          withOuterLines={true}
-          withVerticalLabels={false}
-          withHorizontalLabels={true}
-          yAxisSuffix=""
-          chartConfig={{
-            backgroundColor: '#0a0a0a',
-            backgroundGradientFrom: '#111',
-            backgroundGradientTo: '#111',
-            decimalPlaces: 0,
-            color: (opacity = 1) => `rgba(0, 255, 170, ${opacity})`,
-            labelColor: (opacity = 1) => `rgba(150, 150, 150, ${opacity})`,
-            style: { borderRadius: 10 },
-            propsForDots: { r: '0' },
-          }}
-          bezier
-          style={styles.chart}
-        />
       </View>
 
       <Text style={styles.sectionLabel}>SW-420 DIGITAL SENSOR STATUS</Text>
@@ -105,7 +120,35 @@ const DashboardScreen = ({ navigation }) => {
           </Text>
         </View>
       </View>
-    </ScrollView>
+
+      <Text style={styles.sectionLabel}>EMERGENCY & SAFETY AI ASSISTANT</Text>
+      <View style={styles.chatContainer}>
+        <FlatList
+          data={messages}
+          keyExtractor={(item, index) => index.toString()}
+          renderItem={renderMessage}
+          contentContainerStyle={styles.chatList}
+          inverted={false}
+        />
+        
+        {isTyping && (
+          <Text style={styles.typingText}>Assistant is typing...</Text>
+        )}
+
+        <View style={styles.inputRow}>
+          <TextInput
+            style={styles.textInput}
+            value={inputText}
+            onChangeText={setInputText}
+            placeholder="Ask about earthquake safety..."
+            placeholderTextColor="#888"
+          />
+          <TouchableOpacity style={styles.sendBtn} onPress={handleSendMessage} disabled={isTyping || !inputText.trim()}>
+            <Text style={styles.sendText}>SEND</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -114,6 +157,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#050505',
     padding: 20,
+    paddingBottom: 0,
   },
   centerAlign: {
     justifyContent: 'center',
@@ -147,24 +191,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 2,
     marginBottom: 10,
-    marginTop: 10,
-  },
-  chartContainer: {
-    backgroundColor: '#111',
-    borderRadius: 12,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: '#333',
-    marginBottom: 20,
-  },
-  chart: {
-    marginVertical: 8,
-    borderRadius: 10,
+    marginTop: 0,
   },
   cardContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 40,
+    marginBottom: 20,
   },
   statusCard: {
     padding: 20,
@@ -197,6 +227,81 @@ const styles = StyleSheet.create({
   },
   textAlert: {
     color: '#ff4444',
+  },
+  
+  // Chat Styles
+  chatContainer: {
+    flex: 1,
+    backgroundColor: '#111',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#333',
+    padding: 10,
+    marginBottom: 20,
+  },
+  chatList: {
+    paddingBottom: 10,
+  },
+  messageBubble: {
+    padding: 12,
+    borderRadius: 8,
+    marginVertical: 4,
+    maxWidth: '85%',
+  },
+  userBubble: {
+    backgroundColor: '#222',
+    alignSelf: 'flex-end',
+    borderBottomRightRadius: 2,
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  botBubble: {
+    backgroundColor: '#0a1a0f',
+    alignSelf: 'flex-start',
+    borderBottomLeftRadius: 2,
+    borderWidth: 1,
+    borderColor: '#00ffa4',
+  },
+  messageText: {
+    color: '#fff',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  typingText: {
+    color: '#00ffa4',
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginBottom: 10,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+    paddingTop: 10,
+  },
+  textInput: {
+    flex: 1,
+    backgroundColor: '#1a1a1a',
+    color: '#fff',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  sendBtn: {
+    justifyContent: 'center',
+    marginLeft: 10,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 15,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#00ffa4',
+  },
+  sendText: {
+    color: '#00ffa4',
+    fontWeight: 'bold',
   }
 });
 
